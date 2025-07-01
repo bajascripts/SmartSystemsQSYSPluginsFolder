@@ -1,0 +1,306 @@
+-- Basic Framework Plugin
+-- by QSC
+-- October 2020
+
+-- Information block for the plugin
+PluginInfo = {
+  Name = "Metered Fader",
+  Version = "0.0",
+  BuildVersion = "0.0.0.91",
+  Id = "d8b8afab-7904-4176-b107-42f22885d971",
+  Author = "Braden Jones",
+  Description = "A simple metered fader with some extra options. Meant to be reusuable in designs."  
+}
+
+local globalLayout
+local numberOfFaders = 1
+
+-- Define the color of the plugin object in the design
+function GetColor(props)
+  return { 102, 102, 102 }
+end
+
+-- The name that will initially display when dragged into a design
+function GetPrettyName(props)
+  return "Metered Fader " .. PluginInfo.Version
+end
+
+-- Optional function used if plugin has multiple pages
+PageNames = { "Control" }  --List the pages within the plugin
+function GetPages(props)
+  local pages = {}
+  for ix,name in ipairs(PageNames) do
+    table.insert(pages, {name = PageNames[ix]})
+  end
+  return pages
+end
+
+-- Optional function to define model if plugin supports more than one model
+function GetModel(props)
+  local model = {}
+  if props.Model ~= nil and props.Model.Value ~= "" then
+    table.insert(model, { props.Model.Value } )
+  else
+    table.insert(model, { "Base Model" } )
+  end
+ return model
+end
+
+-- Define User configurable Properties of the plugin
+function GetProperties()
+  local props = {}
+  table.insert(props, {
+    Name = "Debug Print",
+    Type = "enum",
+    Choices = {"None", "Tx/Rx", "Tx", "Rx", "Function Calls", "All"},
+    Value = "None"
+  })
+  
+  table.insert(props, {
+    Name = "Max Gain",
+    Type = "integer",
+    Value = 20,
+    Min = -100,
+    Max = 20,
+  })
+  
+  table.insert(props, {
+    Name = "Number of Faders",
+    Type = "integer",
+    Value = 1,
+    Min = 1,
+    Max = 20,
+  })
+  
+  table.insert(props, {
+    Name = "Min Gain",
+    Type = "integer",
+    Value = -40,
+    Min = -100,
+    Max = 20,
+  })
+  
+  table.insert(props, {
+    Name = "Auto Mute",
+    Type = "enum",
+    Choices = {"Yes","No"},
+    Value = "No"
+  })
+  
+  
+
+  return props
+end
+
+-- Optional function to define pins on the plugin that are not connected to a Control
+function GetPins(props)
+  local pins = {}
+  
+  for i=1,props["Number of Faders"].Value do
+    table.insert(pins,{
+      Name = "Audio Output " .. i,
+      Direction = "output",
+    })
+    table.insert(pins,{
+      Name = "Audio Input " .. i,
+      Direction = "input",
+    })
+    
+  end
+  return pins
+end
+
+-- Optional function to update available properties when properties are altered by the user
+function RectifyProperties(props)
+  if props.plugin_show_debug.Value == false then 
+    props["Debug Print"].IsHidden = true 
+  end
+  return props
+end
+
+-- Optional function to define components used within the plugin
+function GetComponents(props)
+  local components = {}
+  table.insert(components,{
+    Name = "main_mixer",
+    Type = "mixer",
+    Properties =   
+    {
+      ["n_inputs"] = 1,
+      ["n_outputs"] = 2,
+    }
+  })
+  
+  
+  table.insert(components,{
+    Name = "main_gain",
+    Type = "gain",
+    Properties = {
+      ["max_gain"] = props["Max Gain"].Value,
+      ["min_gain"] = props["Min Gain"].Value,
+      ["multi_channel_type"] = 3,
+      ["multi_channel_count"] = props["Number of Faders"].Value
+    }
+  })
+  
+  
+  table.insert(components,{
+    Name = "main_meter",
+    Type = "meter2",
+    Properties =
+    {
+      ["meter_type"] = 3,
+      ["multi_channel_type"] = 3,
+      ["multi_channel_count"] = props["Number of Faders"].Value
+    }
+  })
+  return components
+end
+
+-- Optional function to define wiring of components used within the plugin
+function GetWiring(props)
+  local wiring = {}
+  --table.insert( wiring, { "Audio Output", "main_mixer Output 1" } )
+  
+    for i=1,props["Number of Faders"].Value do
+      table.insert(wiring,{"Audio Output " .. i,"main_gain Output Channel " .. i})
+      table.insert(wiring,{"Audio Input " .. i,"main_gain Input Channel " .. i})
+      table.insert(wiring,{"Audio Input " .. i,"main_meter Input " .. i})
+    
+  
+     
+    end
+  
+  
+  
+  --table.insert(wiring,{"Audio Input","main_meter Input"})
+  return wiring
+end
+
+-- Defines the Controls used within the plugin
+function GetControls(props)
+  local ctrls = {}
+  
+  for i=1,props["Number of Faders"].Value do
+    table.insert(ctrls, {
+      Name = "Gain " .. i,
+      ControlType = "Knob",
+      Count = 1,
+      ControlUnit = "dB",
+      Min = props["Min Gain"].Value,
+      Max = props["Max Gain"].Value,
+      DefaultValue = 0,
+      UserPin = true,
+      PinStyle = "Both",
+    })
+    
+    
+    table.insert(ctrls, {
+      Name = "Meter " .. i,
+      ControlType = "Indicator",
+      IndicatorType = "Meter",
+      Count = 1,
+      DefaultValue = 0,
+      UserPin = true,
+      PinStyle = "Output",
+    })
+    
+    table.insert(ctrls, {
+      Name = "Mute " .. i,
+      ControlType = "Button",
+      ButtonType = "Toggle",
+      Count = 1,
+      DefaultValue = 0,
+      UserPin = true,
+      PinStyle = "Both",
+    })
+    
+  end
+  return ctrls
+end
+
+--Layout of controls and graphics for the plugin UI to display
+function GetControlLayout(props)
+  local layout = {}
+  local graphics = {}
+  local CurrentPage = PageNames[props["page_index"].Value]
+  if CurrentPage == "Control" then
+    table.insert(graphics,{
+      Type = "GroupBox",
+      Text = "Control ("..props["Number of Faders"].Value..")",
+      Fill = {200,200,200},
+      StrokeWidth = 1,
+      Position = {5,5},
+      Size = {200+(props["Number of Faders"].Value*86),400},
+      ZOrder = 1,
+    })
+  
+    
+    for i=1,props["Number of Faders"].Value do
+    
+      layout["Meter " .. i] = {
+        PrettyName = "Indicators~Meter " .. i,
+        Style = "Meter",
+        StrokeWidth = 0,
+        CornerRadius = 0,
+        ShowTextbox = false,
+        MeterStyle="Level",
+      
+        --100
+        Position = {(i*86) + 24,85},
+        Size = {39,114},
+        ZOrder = 4,
+                             
+      }
+      
+      layout["Gain " .. i] = {
+        ClassName="primary-button",
+        PrettyName = "Controls~Gain " .. i,
+        Style = "Fader",
+        --76
+        Position = {(i*86) + 0,50},
+        Size = {86,189},
+        StrokeWidth = 0,
+        ShowTextbox = false,
+        ZOrder = 5,
+      }
+      layout["Mute " .. i] = {
+        ClassName="fader-mute-button",
+        PrettyName = "Controls~Mute " .. i,
+        Style = "Button",
+        ButtonStyle = "Toggle",
+        ButtonVisualStyle = "Flat",
+        --76
+        Position = {(i*86) + 5,239},
+        Size = {76,35},
+        StrokeWidth = 0,
+        ZOrder = 5,
+        FontSize=15,
+        Text="Mute"
+      }
+     
+    end
+  
+    
+  end
+  globalLayout = layout
+  numberOfFaders = props["Number of Faders"].Value
+  return layout, graphics
+end
+
+--Start event based logic
+if Controls then
+  
+  for i=1,numberOfFaders do
+    Controls["Gain " .. i].EventHandler=function(ct)
+      
+      _G["main_gain_" .. i]["gain"].Value = ct.Value
+    end
+    Controls["Mute " .. i].EventHandler=function(ct)
+      _G["main_gain_" .. i]["mute"].Value = ct.Value
+    end
+    _G["main_meter"]["rms."..i].EventHandler=function(ct)
+      ct.Value = ct.Value
+    end
+  end
+end

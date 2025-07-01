@@ -1,0 +1,545 @@
+-- Basic Framework Plugin
+-- by QSC
+-- October 2020
+
+-- Information block for the plugin
+PluginInfo = {
+  Name = "OBS Plugin",
+  Version = "0.0",
+  BuildVersion = "0.0.0.115",
+  Id = "0b2bd0a1-4448-4172-8579-7bcf7c7f4ec6",
+  Author = "Braden Jones",
+  Description = "A plugin for controlling OBS via the OBS Websocket Server"  
+}
+
+local NumberOfScenes = 5
+local NumberOfSceneCollections = 5
+
+-- Define the color of the plugin object in the design
+function GetColor(props)
+  return { 102, 102, 102 }
+end
+
+-- The name that will initially display when dragged into a design
+function GetPrettyName(props)
+  return "Open Broadcasting Software (OBS) Control " .. PluginInfo.Version
+end
+
+-- Optional function used if plugin has multiple pages
+PageNames = { "Scene Control","Scene Collection Control", "Setup" }  --List the pages within the plugin
+function GetPages(props)
+  local pages = {}
+  for ix,name in ipairs(PageNames) do
+    table.insert(pages, {name = PageNames[ix]})
+  end
+  return pages
+end
+
+-- Optional function to define model if plugin supports more than one model
+function GetModel(props)
+  local model = {}
+  if props.Model ~= nil and props.Model.Value ~= "" then
+    table.insert(model, { props.Model.Value } )
+  else
+    table.insert(model, { "Base Model" } )
+  end
+ return model
+end
+
+-- Define User configurable Properties of the plugin
+function GetProperties()
+  local props = {}
+  table.insert(props, {
+    Name = "Debug Print",
+    Type = "enum",
+    Choices = {"None", "Tx/Rx", "Tx", "Rx", "Function Calls", "All"},
+    Value = "None"
+  })
+  table.insert(props,{
+    Name = "NumberOfSceneCollections",
+    Type = "integer",
+    Min = 0,
+    Max = 20,
+    Value = 5
+  })
+  table.insert(props,{
+    Name = "NumberOfScenes",
+    Type = "integer",
+    Min = 0,
+    Max = 20,
+    Value = 5
+  })
+  return props
+end
+
+-- Optional function to define pins on the plugin that are not connected to a Control
+function GetPins(props)
+  local pins = {}
+  return pins
+end
+
+-- Optional function to update available properties when properties are altered by the user
+function RectifyProperties(props)
+  if props.plugin_show_debug.Value == false then 
+    props["Debug Print"].IsHidden = true 
+  end
+  return props
+end
+
+-- Optional function to define components used within the plugin
+function GetComponents(props)
+  local components = {}
+  return components
+end
+
+-- Optional function to define wiring of components used within the plugin
+function GetWiring(props)
+  local wiring = {}
+  return wiring
+end
+
+-- Defines the Controls used within the plugin
+function GetControls(props)
+  local ctrls = {}
+  table.insert(ctrls, {
+    Name = "SendButton",
+    ControlType = "Button",
+    ButtonType = "Momentary",
+    Count = 1,
+    UserPin = true,
+    PinStyle = "Input",
+    Icon = "Power"
+  })
+  
+  --[[SETUP Controls]]
+  
+  table.insert(ctrls, {
+    Name = "connection_status",
+    ControlType = "Indicator",
+    IndicatorType = "Text",
+    DefaultValue = false,
+    PinStyle = "Output",
+    Count = 1,
+    UserPin = true
+  })
+  
+  table.insert(ctrls, {
+    Name = "obs_host_ip",
+    ControlType = "Text",
+    DefaultValue = "127.0.0.1",
+    UserPin = true,
+    PinStyle = "Input",
+    Count = 1
+  })
+  table.insert(ctrls, {
+    Name = "obs_port",
+    ControlType = "Text",
+    DefaultValue = "4455",
+    UserPin = true,
+    PinStyle = "Input",
+    Count = 1
+  })
+  table.insert(ctrls, {
+    Name = "obs_password",
+    ControlType = "Text",
+    DefaultValue = "123456",
+    UserPin = true,
+    PinStyle = "Input",
+    Count = 1
+  })
+  
+  table.insert(ctrls, {
+    Name = "connect_button",
+    ControlType = "Button",
+    ButtonType = "Trigger",
+    Count = 1,
+    UserPin = true,
+    PinStyle = "Input",
+    Text="Connect",
+  })
+  
+  
+  for i = 1, props.NumberOfScenes.Value do
+    table.insert(ctrls, {
+      Name = "obs.scene." .. i,
+      ControlType = "Text",
+      DefaultValue = "Scene Name",
+      UserPin = true,
+      PinStyle = "Input",
+      Count = 1
+    })
+    table.insert(ctrls, {
+      Name = "obs.scene." .. i .. ".load",
+      ControlType = "Button",
+      ButtonType = "Trigger",
+      UserPin = true,
+      PinStyle = "Input",
+      Count = 1,
+      Text="Load"
+    })
+  end
+  
+  NumberOfScenes = props.NumberOfScenes.Value
+  
+  for i = 1, props.NumberOfSceneCollections.Value do
+    table.insert(ctrls, {
+      Name = "obs.scene.collection." .. i,
+      ControlType = "Text",
+      DefaultValue = "Scene Collection Name",
+      UserPin = true,
+      PinStyle = "Input",
+      Count = 1
+    })
+    table.insert(ctrls, {
+      Name = "obs.scene.collection." .. i .. ".load",
+      ControlType = "Button",
+      ButtonType = "Trigger",
+      UserPin = true,
+      PinStyle = "Input",
+      Count = 1,
+      Text="Load"
+    })
+  end
+  
+  NumberOfSceneCollections = props.NumberOfSceneCollections.Value
+  return ctrls
+end
+
+--Layout of controls and graphics for the plugin UI to display
+function GetControlLayout(props)
+  local layout = {}
+  local graphics = {}
+  local CurrentPage = PageNames[props["page_index"].Value]
+  if CurrentPage == "Scene Control" then
+    table.insert(graphics,{
+      Type = "GroupBox",
+      Text = "Scenes",
+      Fill = {200,200,200},
+      StrokeWidth = 1,
+      Position = {5,5},
+      Size = {400,( props.NumberOfScenes.Value*24)+100}
+    })
+    for i = 1, props.NumberOfScenes.Value do
+      table.insert(graphics, {
+        Type = "Text",
+        Text = "OBS Scene " .. i,
+        Position = {10, (i*24)+32},
+        Size = {120, 16},
+        FontSize = 14,
+        HTextAlign = "Right"
+      })
+      layout["obs.scene." .. i] ={
+        PrettyName = "Control~OBS Scene" .. i,
+        Style = "Text",
+        FontSize = 14,
+        HTextAlign = "Center",
+        Padding = 2,
+        StrokeWidth = 1,
+        Position = {140, (i*24)+32},
+        Size = {120, 16},
+        Color = {0, 0, 0}
+      }
+      layout["obs.scene." .. i .. ".load"] ={
+        PrettyName = "Control~OBS Load Scene " .. i,
+  
+        Style = "Button",
+        Position = {260, (i*24)+32},
+        Size = {42, 16},
+        Color = {0, 255, 0},
+        TextColor = {255, 255, 255},
+        FontSize = 16
+      }
+    end
+  elseif CurrentPage == "Scene Collection Control" then
+    table.insert(graphics,{
+      Type = "GroupBox",
+      Text = "Scene Collections",
+      Fill = {200,200,200},
+      StrokeWidth = 1,
+      Position = {5,5},
+      Size = {400,( props.NumberOfSceneCollections.Value*24)+100}
+    })
+    for i = 1, props.NumberOfSceneCollections.Value do
+      table.insert(graphics, {
+        Type = "Text",
+        Text = "OBS Scene " .. i,
+        Position = {10, (i*24)+32},
+        Size = {120, 16},
+        FontSize = 14,
+        HTextAlign = "Right"
+      })
+      layout["obs.scene.collection." .. i] ={
+        PrettyName = "Control~OBS Scene Collection" .. i,
+        Style = "Text",
+        FontSize = 14,
+        HTextAlign = "Center",
+        Padding = 2,
+        StrokeWidth = 1,
+        Position = {140, (i*24)+32},
+        Size = {120, 16},
+        Color = {0, 0, 0}
+      }
+      layout["obs.scene.collection." .. i .. ".load"] ={
+        PrettyName = "Control~OBS Load Scene Collection " .. i,
+  
+        Style = "Button",
+        Position = {260, (i*24)+32},
+        Size = {42, 16},
+        Color = {0, 255, 0},
+        TextColor = {255, 255, 255},
+        FontSize = 16
+      }
+    end
+  elseif CurrentPage == "Setup" then
+    table.insert(graphics, {
+      Type = "GroupBox",
+      Text = "OBS WebSocket Setup",
+      Fill = {220, 220, 220},
+      StrokeWidth = 1,
+      Position = {5, 5},
+      Size = {300, 250}
+    })
+  
+    table.insert(graphics, {
+      Type = "Text",
+      Text = "Host (IP:PORT):",
+      Position = {10, 52},
+      Size = {120, 16},
+      FontSize = 14,
+      HTextAlign = "Right"
+    })
+    
+    layout["obs_host_ip"] = {
+      PrettyName = "Setup~OBS Host IP",
+      Style = "Text",
+      FontSize = 14,
+      HTextAlign = "Center",
+      Padding = 2,
+      StrokeWidth = 1,
+      Position = {140, 52},
+      Size = {120, 16},
+      Color = {0, 0, 0}
+    }
+  
+    table.insert(graphics, {
+      Type = "Text",
+      Text = "Port:",
+      Position = {10, 84},
+      Size = {120, 16},
+      FontSize = 14,
+      HTextAlign = "Right"
+    })
+  
+    layout["obs_port"] = {
+      PrettyName = "Setup~OBS Port",
+      Style = "Text",
+      FontSize = 14,
+      HTextAlign = "Center",
+      Padding = 2,
+      StrokeWidth = 1,
+      Position = {140, 84},
+      Size = {120, 16},
+      Color = {0, 0, 0}
+    }
+  
+    table.insert(graphics, {
+      Type = "Text",
+      Text = "Password:",
+      Position = {10, 116},
+      Size = {120, 16},
+      FontSize = 14,
+      HTextAlign = "Right"
+    })
+  
+    layout["obs_password"] = {
+      PrettyName = "Setup~OBS Password",
+      Style = "Text",
+      FontSize = 14,
+      HTextAlign = "Center",
+      Padding = 2,
+      StrokeWidth = 1,
+      Position = {140, 116},
+      Size = {120, 16},
+      Color = {0, 0, 0}
+    }
+  
+    layout["connect_button"] = {
+      PrettyName = "Buttons~Connect to OBS",
+      Style = "Button",
+      Text = "Connect",
+      Position = {75, 150},
+      Size = {150, 32},
+      Color = {0, 255, 0},
+      TextColor = {255, 255, 255},
+      FontSize = 16
+    }
+  
+    layout["connection_status"] = {
+      PrettyName = "System~OBS Connection Status",
+      Style = "Indicator",
+      UnlinkOffColor = true,
+      StrokeWidth = 1,
+      FontSize = 14,
+      Margin = 4,
+      Position = {75, 20},
+      Size = {150, 32},
+      Color = {255, 0, 0}
+    }
+  end
+  
+  return layout, graphics
+end
+
+--Start event based logic
+if Controls then
+  require("json")
+  local ws = WebSocket.New()
+  pingTimer = Timer.New()
+  
+  obs_host_ip = Controls.obs_host_ip
+  obs_port = Controls.obs_port
+  obs_password = Controls.obs_password
+  connect_button = Controls.connect_button
+  connection_status = Controls.connection_status
+  
+  
+  
+  
+  -- WebSocket URL Format
+  function get_obs_url()
+      return "ws://" .. obs_host_ip.String .. ":" .. obs_port.String .. "/" .. obs_password.String
+  end
+  
+  -- Connection Status Update
+  function set_connection_status(connected)
+      if connected then
+          connection_status.Color = 'Green'
+          connection_status.String = 'Connected'
+      else
+          connection_status.Color = 'Red'
+          connection_status.String = 'Not Connected'
+      end
+  end
+  
+  -- Attempt Connection
+  function connect_to_obs()
+      url = get_obs_url()
+      print("Connecting to OBS at: " .. url)
+  
+      -- Simulate connection (replace with actual WebSocket library call)
+      if obs_host_ip.String ~= "" and obs_port.String ~= "" then
+  
+          ws:Connect("ws", obs_host_ip.String, "", obs_port.String) 
+         
+      else
+          print("Failed to connect")
+          set_connection_status(false)
+      end
+  end
+  
+  pingTimer.EventHandler = function()
+    ws:Ping()
+  end
+  
+  ws.Closed = function()
+    print("Web Socket Closed")
+    set_connection_status(false)
+    pingTimer:Stop()
+  end
+  ws.Error = function(ws,err)
+    print("Web Socket Error ",err)
+  end
+  ws.Connected = function(ws)
+    print("Web Socket Connected")
+  end
+  
+  ws.Data = function( ws, data)
+    print("Web Socket Data", data)
+  
+  
+    local data = json.decode(data)
+  
+    if (data.op == 0) then
+      if (data.d) then
+        if (data.d.authentication ~= nil) then
+          print("Attempting to Authenticate with Web Socket")
+          -- computing the authentication string (its so dumb)
+          local password = obs_password.String;
+          local salt = data.d.authentication.salt;
+          local challenge = data.d.authentication.challenge;
+          local secret =  Crypto.Base64Encode(Crypto.Digest("sha256", password .. salt))
+          local authResponseHash = Crypto.Base64Encode(Crypto.Digest("sha256", secret .. challenge));
+          --print(authResponseHash)
+          local authPayload = {
+            ["op"] = 1,
+            ["d"] = {
+                ["rpcVersion"] = 1,
+                ["authentication"] = authResponseHash,
+                ["eventSubscriptions"] = 33
+            }
+          }
+          --print(json.encode(authPayload))
+          ws:Write(json.encode(authPayload))
+        end
+      end
+    elseif (data.op == 2) then
+      set_connection_status(true)
+      pingTimer:Stop()
+      pingTimer:Start(10)
+    end
+  end
+  
+  -- Button Trigger
+  connect_button.EventHandler = function()
+      connect_to_obs()
+  end
+  
+  -- Controls Event Handling
+  for i=1,NumberOfScenes do
+    Controls["obs.scene." .. i .. ".load"].EventHandler = function()
+      local control = Controls["obs.scene."..i];
+      print("Load Scene " .. i .. "" .. control.String)
+      local payload ={
+        ["op"] = 6,
+        ["d"] = {
+          ["requestType"] = "SetCurrentProgramScene",
+          ["requestId"] = "f819dcf0-89cc-11eb-8f0e-382c4ac93b9c",
+          ["requestData"] = {
+            ["sceneName"] = control.String
+          }
+        }
+      }
+  
+  
+      ws:Write(json.encode(payload))
+    end
+  end
+  
+  for i=1,NumberOfSceneCollections do
+    Controls["obs.scene.collection." .. i .. ".load"].EventHandler = function()
+      local control = Controls["obs.scene.collection."..i];
+      print("Load Scene " .. i .. "" .. control.String)
+      local payload ={
+        ["op"] = 6,
+        ["d"] = {
+          ["requestType"] = "SetCurrentSceneCollection",
+          ["requestId"] = "f819dcf0-89cc-11eb-8f0e-382c4ac93b9c",
+          ["requestData"] = {
+            ["sceneCollectionName"] = control.String
+          }
+        }
+      }
+  
+  
+      ws:Write(json.encode(payload))
+    end
+  end
+  
+  
+  -- Initialize with disconnected status
+  set_connection_status(false)
+  
+  -- Trigger Init On Startup
+  connect_to_obs()
+  
+end
