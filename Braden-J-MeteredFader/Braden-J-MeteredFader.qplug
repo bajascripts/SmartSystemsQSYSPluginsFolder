@@ -5,15 +5,14 @@
 -- Information block for the plugin
 PluginInfo = {
   Name = "Metered Fader",
-  Version = "0.0",
-  BuildVersion = "0.0.0.91",
+  Version = "1.1",
+  BuildVersion = "0.0.0.116",
   Id = "d8b8afab-7904-4176-b107-42f22885d971",
   Author = "Braden Jones",
   Description = "A simple metered fader with some extra options. Meant to be reusuable in designs."  
 }
 
 local globalLayout
-local numberOfFaders = 1
 
 -- Define the color of the plugin object in the design
 function GetColor(props)
@@ -121,39 +120,42 @@ end
 -- Optional function to define components used within the plugin
 function GetComponents(props)
   local components = {}
-  table.insert(components,{
-    Name = "main_mixer",
-    Type = "mixer",
-    Properties =   
-    {
-      ["n_inputs"] = 1,
-      ["n_outputs"] = 2,
-    }
-  })
+  -- table.insert(components,{
+  --   Name = "main_mixer",
+  --   Type = "mixer",
+  --   Properties =   
+  --   {
+  --     ["n_inputs"] = 1,
+  --     ["n_outputs"] = 2,
+  --   }
+  -- })
   
   
-  table.insert(components,{
-    Name = "main_gain",
-    Type = "gain",
-    Properties = {
-      ["max_gain"] = props["Max Gain"].Value,
-      ["min_gain"] = props["Min Gain"].Value,
-      ["multi_channel_type"] = 3,
-      ["multi_channel_count"] = props["Number of Faders"].Value
-    }
-  })
+  for i=1,props["Number of Faders"].Value do
+    table.insert(components,{
+      Name = "main_gain_" .. i,
+      Type = "gain",
+      Properties = {
+        ["max_gain"] = props["Max Gain"].Value,
+        ["min_gain"] = props["Min Gain"].Value,
+        ["multi_channel_type"] = 1,
+      }
+    })
+    table.insert(components,{
+      Name = "main_meter_" .. i,
+      Type = "meter2",
+      Properties =
+      {
+        ["meter_type"] = 3,
+        ["multi_channel_type"] = 1,
+      }
+    })
+    
+  end
   
   
-  table.insert(components,{
-    Name = "main_meter",
-    Type = "meter2",
-    Properties =
-    {
-      ["meter_type"] = 3,
-      ["multi_channel_type"] = 3,
-      ["multi_channel_count"] = props["Number of Faders"].Value
-    }
-  })
+  
+  
   return components
 end
 
@@ -163,9 +165,9 @@ function GetWiring(props)
   --table.insert( wiring, { "Audio Output", "main_mixer Output 1" } )
   
     for i=1,props["Number of Faders"].Value do
-      table.insert(wiring,{"Audio Output " .. i,"main_gain Output Channel " .. i})
-      table.insert(wiring,{"Audio Input " .. i,"main_gain Input Channel " .. i})
-      table.insert(wiring,{"Audio Input " .. i,"main_meter Input " .. i})
+      table.insert(wiring,{"main_gain_" .. i .. " Output","Audio Output " .. i})
+      table.insert(wiring,{"Audio Input " .. i,"main_gain_" .. i .. " Input"})
+      table.insert(wiring,{"Audio Input " .. i,"main_meter_".. i .. " Input"})
     
   
      
@@ -291,16 +293,29 @@ end
 --Start event based logic
 if Controls then
   
-  for i=1,numberOfFaders do
+  
+  
+  
+  for i=1,Properties["Number of Faders"].Value do
+    print("Registering " .. i)
     Controls["Gain " .. i].EventHandler=function(ct)
-      
+      print(i .. " gain " .. ct.Value)
       _G["main_gain_" .. i]["gain"].Value = ct.Value
+      if  Properties["Auto Mute"].Value == "Yes" then
+        print(ct.Value,Properties["Min Gain"].Value)
+        if ct.Value <= Properties["Min Gain"].Value then
+          print("AUTO MUTE")
+          Controls["Mute " .. i].Value = 1.0
+        end
+      end
     end
     Controls["Mute " .. i].EventHandler=function(ct)
+      print(i .. " mute " .. ct.Value)
       _G["main_gain_" .. i]["mute"].Value = ct.Value
     end
-    _G["main_meter"]["rms."..i].EventHandler=function(ct)
-      ct.Value = ct.Value
+  
+    _G["main_meter_"..i]["rms.1"].EventHandler=function(ct)
+      Controls["Meter " .. i].Value = ct.Value
     end
   end
 end
